@@ -1,0 +1,9 @@
+{
+  "name": "Night Auditor Assistant v2",
+  "short_name": "Night Auditor",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#14243a",
+  "description": "مساعد يدوي للاستقبال والتدقيق الليلي"
+}
