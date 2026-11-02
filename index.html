@@ -1,44 +1,49 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#14243a"><title>Night Auditor Assistant v2</title>
-<link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="style.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#14243a"><title>Night Audit Manager Pro</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="topbar"><div><div class="eyebrow">HOTEL OPERATIONS</div><h1 id="appTitle">مساعد الاستقبال والمدقق الليلي</h1><p class="sub">Night Reception & Audit Assistant · v2.0</p></div>
-<div class="header-actions"><button class="ghost" id="langBtn">FR / العربية</button><button class="ghost" id="exportBtn">نسخة احتياطية</button><label class="ghost import-label">استيراد نسخة<input id="importFile" type="file" accept="application/json" hidden></label><button class="primary" id="notifyBtn">تفعيل الإشعارات</button></div></header>
-<main class="wrap">
-<section class="hero panel"><div><div class="eyebrow" id="shiftLabel">المناوبة الحالية</div><h2 id="clock">--:--:--</h2><p id="dateLine">—</p></div>
-<div class="shift-controls"><label><span data-ar="بداية المناوبة" data-fr="Début du service">بداية المناوبة</span><input id="shiftStart" type="time" value="23:00"></label><label><span data-ar="نهاية المناوبة" data-fr="Fin du service">نهاية المناوبة</span><input id="shiftEnd" type="time" value="07:00"></label><button class="primary" id="saveShift">حفظ التوقيت</button></div></section>
-<section class="stats">
-<article class="stat panel"><span data-ar="المهام المتبقية" data-fr="Tâches restantes">المهام المتبقية</span><strong id="remaining">0</strong></article>
-<article class="stat panel"><span data-ar="المهام المنجزة" data-fr="Tâches terminées">المهام المنجزة</span><strong id="done">0</strong></article>
-<article class="stat panel"><span data-ar="صافي الحركة" data-fr="Solde des opérations">صافي الحركة</span><strong id="net">0.00 DH</strong></article>
-<article class="stat panel"><span data-ar="نسبة الإشغال" data-fr="Taux d'occupation">نسبة الإشغال</span><strong id="occupancy">0%</strong></article></section>
-<nav class="tabs"><button class="tab active" data-tab="tasks" data-ar="المهام والتنبيهات" data-fr="Tâches & alertes">المهام والتنبيهات</button><button class="tab" data-tab="operations" data-ar="العمليات اليومية" data-fr="Opérations">العمليات اليومية</button><button class="tab" data-tab="rooms" data-ar="الغرف والمؤشرات" data-fr="Chambres & KPI">الغرف والمؤشرات</button><button class="tab" data-tab="report" data-ar="تقرير المناوبة" data-fr="Rapport">تقرير المناوبة</button><button class="tab" data-tab="history" data-ar="سجل المناوبات" data-fr="Historique">سجل المناوبات</button></nav>
-<section class="tabpane active" id="tasks"><div class="section-head"><div><h2 data-ar="قائمة مهام المناوبة" data-fr="Checklist de nuit">قائمة مهام المناوبة</h2><p data-ar="عدّل الأوقات حسب إجراءات مؤسستك." data-fr="Adaptez les horaires aux procédures de votre établissement.">عدّل الأوقات حسب إجراءات مؤسستك.</p></div><button class="primary" id="addTaskBtn">＋ إضافة مهمة</button></div>
-<div class="notice"><strong>تنبيه مهني:</strong> المهام والتوقيتات المقترحة أمثلة قابلة للتعديل. اتبع إجراءات الفندق وتعليمات المسؤول، ولا تعتبر إغلاق النظام مكتملاً بمجرد وضع علامة الإنجاز.</div><div id="taskList" class="task-list"></div></section>
-<section class="tabpane" id="operations"><div class="section-head"><div><h2 data-ar="تسجيل المداخيل والمصاريف" data-fr="Recettes & dépenses">تسجيل المداخيل والمصاريف</h2><p>أدخل العمليات يدوياً؛ الحسابات تتحدث تلقائياً.</p></div></div>
-<form id="operationForm" class="form-grid panel">
-<label><span>نوع العملية</span><select id="opType"><option value="income">مدخول / Recette</option><option value="expense">مصروف / Dépense</option></select></label>
-<label><span>التصنيف</span><select id="opCategory"><option value="room">مداخيل الغرف / Chambres</option><option value="restaurant">مطعم / Restaurant</option><option value="beverage">مشروبات / Boissons</option><option value="other_income">مدخول آخر / Autre recette</option><option value="expense">مصروف عام / Dépense</option></select></label>
-<label><span>المبلغ (DH)</span><input id="opAmount" type="number" min="0.01" step="0.01" required placeholder="0.00"></label>
-<label><span>طريقة الدفع</span><select id="opPayment"><option value="cash">نقداً / Espèces</option><option value="card">بطاقة / Carte</option><option value="transfer">تحويل / Virement</option><option value="other">غير ذلك / Autre</option></select></label>
-<label class="wide"><span>البيان / المرجع</span><input id="opNote" placeholder="مثال: أداء غرفة 04 أو فاتورة 125"></label>
-<button class="primary wide" type="submit">＋ تسجيل العملية</button></form>
-<div class="stats compact"><article class="stat panel"><span>إجمالي المداخيل</span><strong id="incomeTotal">0.00 DH</strong></article><article class="stat panel"><span>إجمالي المصاريف</span><strong id="expenseTotal">0.00 DH</strong></article><article class="stat panel"><span>الصافي</span><strong id="netTotal">0.00 DH</strong></article></div>
-<div class="table-wrap panel"><table><thead><tr><th>الوقت</th><th>النوع</th><th>التصنيف</th><th>المبلغ</th><th>الدفع</th><th>البيان</th><th></th></tr></thead><tbody id="operationRows"></tbody></table></div></section>
-<section class="tabpane" id="rooms"><div class="section-head"><div><h2>حالة الغرف ومؤشرات الأداء</h2><p>أدخل بيانات الليلة يدوياً. المؤشرات تقديرية وفق المدخلات.</p></div></div>
-<form id="roomsForm" class="form-grid panel">
-<label><span>إجمالي الغرف المتاحة</span><input id="totalRooms" type="number" min="0" value="20"></label><label><span>الغرف المشغولة</span><input id="occupiedRooms" type="number" min="0" value="0"></label>
-<label><span>الوصولات المتوقعة</span><input id="arrivals" type="number" min="0" value="0"></label><label><span>المغادرات المتوقعة</span><input id="departures" type="number" min="0" value="0"></label>
-<label><span>رصيد الصندوق عند الاستلام (DH)</span><input id="openingCash" type="number" min="0" step="0.01" value="0"></label><label><span>النقدية الفعلية عند الإغلاق (DH)</span><input id="countedCash" type="number" min="0" step="0.01" value="0"></label>
-<label class="wide"><span>ملاحظات الوصولات والمغادرات</span><textarea id="movementNotes" rows="3"></textarea></label><button class="primary wide" type="submit">حفظ بيانات الغرف</button></form>
-<div class="stats compact"><article class="stat panel"><span>نسبة الإشغال Occupancy</span><strong id="occKpi">0%</strong></article><article class="stat panel"><span>ADR متوسط سعر الغرفة</span><strong id="adrKpi">0.00 DH</strong></article><article class="stat panel"><span>RevPAR العائد لكل غرفة متاحة</span><strong id="revparKpi">0.00 DH</strong></article></div>
-<div class="panel cash-check"><h3>مراقبة الصندوق</h3><p>الرصيد النظري = رصيد الاستلام + المداخيل النقدية − المصاريف النقدية.</p><strong id="expectedCash">الرصيد النظري: 0.00 DH</strong><strong id="cashDifference">الفرق: 0.00 DH</strong><small>تأكد من تصنيف طريقة الدفع. هذا الحساب مساعد ولا يحل محل إجراءات المحاسبة المعتمدة.</small></div></section>
-<section class="tabpane" id="report"><div class="section-head"><div><h2>ملخص نهاية المناوبة</h2><p>احفظ نسخة PDF أو اطبع التقرير.</p></div><div class="header-actions"><button class="ghost" id="archiveBtn">حفظ في سجل المناوبات</button><button class="primary" id="printReport">طباعة / PDF</button></div></div><div id="reportContent" class="panel report-content"></div><div class="panel"><label><span>ملاحظات تسليم المناوبة</span><textarea id="handover" rows="4" placeholder="الأمور التي يجب أن يعرفها الموظف القادم..."></textarea></label><button class="primary" id="saveHandover">حفظ الملاحظات</button></div></section>
-<section class="tabpane" id="history"><div class="section-head"><div><h2>سجل المناوبات المحفوظة</h2><p>الأرشيف يبقى على هذا الجهاز فقط. صدّر نسخة احتياطية بانتظام.</p></div></div><div id="historyList" class="task-list"></div></section>
-<footer><span>Night Auditor Assistant v2.0</span><span id="saveState">الحفظ محلي على هذا الجهاز</span><button class="danger-link" id="resetBtn">بدء مناوبة جديدة / مسح بيانات المناوبة</button></footer></main>
-<dialog id="taskDialog"><form method="dialog" id="taskForm" class="dialog-form"><h3>إضافة مهمة جديدة</h3><label><span>اسم المهمة</span><input id="newTaskName" required></label><label><span>الوقت</span><input id="newTaskTime" type="time" value="02:00" required></label><label><span>تكرار التذكير بالدقائق</span><input id="newTaskRepeat" type="number" min="1" value="10"></label><div class="dialog-actions"><button value="cancel" class="ghost">إلغاء</button><button id="confirmTask" value="default" class="primary">إضافة</button></div></form></dialog>
-<div id="toast" class="toast" role="status"></div><script src="app.js"></script></body></html>
+<header><div><small>NIGHT AUDIT MANAGER PRO</small><h1>إدارة الفنادق والرياضات</h1><p>منصة متعددة المؤسسات · Multi-property</p></div><button id="logout" class="secondary" hidden>تسجيل الخروج</button></header>
+<main>
+<section id="auth" class="card">
+<h2>تسجيل الدخول</h2><p>ادخل بالبريد الإلكتروني وكلمة المرور التي أنشأتها في Supabase.</p>
+<form id="loginForm"><label>البريد الإلكتروني<input id="email" type="email" required autocomplete="username"></label><label>كلمة المرور<input id="password" type="password" required autocomplete="current-password"></label><button>دخول</button></form>
+<p id="authMsg" class="msg"></p>
+</section>
+<section id="workspace" hidden>
+<div class="card">
+<div class="row"><div><h2>مؤسساتي</h2><p>اختر الفندق أو الرياض الذي تريد إدارته.</p></div><button id="addProperty">＋ إضافة مؤسسة</button></div>
+<select id="propertySelect" aria-label="اختيار المؤسسة"></select>
+<div class="row"><input id="renameInput" placeholder="الاسم الجديد للمؤسسة"><button id="renameProperty" class="secondary">تغيير الاسم</button></div>
+<p id="propertyMsg" class="msg"></p>
+</div>
+<div class="card">
+<h2>تسجيل عملية مالية</h2>
+<form id="transactionForm" class="grid">
+<label>نوع العملية<select id="type"><option value="income">مدخول</option><option value="expense">مصروف</option></select></label>
+<label>التصنيف<input id="category" required placeholder="غرف، مطعم، صيانة..."></label>
+<label>المبلغ (DH)<input id="amount" type="number" min="0.01" step="0.01" required></label>
+<label>طريقة الدفع<select id="payment"><option value="cash">نقداً</option><option value="card">بطاقة</option><option value="transfer">تحويل</option><option value="other">أخرى</option></select></label>
+<label class="wide">البيان<input id="description" placeholder="تفاصيل العملية"></label>
+<button class="wide">حفظ العملية</button>
+</form>
+<p id="txMsg" class="msg"></p>
+</div>
+<div class="card">
+<div class="row"><h2>سجل العمليات</h2><button id="refresh" class="secondary">تحديث</button></div>
+<div class="tablewrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>التصنيف</th><th>المبلغ</th><th>الدفع</th><th>البيان</th></tr></thead><tbody id="transactions"></tbody></table></div>
+<p id="totals"></p>
+</div>
+<div class="card">
+<h2>إدارة الموظفين</h2>
+<p>إضافة الموظفين بأمان تحتاج إلى وظيفة خادمية تستخدم مفتاحاً سرياً. لا نضع المفتاح السري داخل هذه الصفحة. سنفعّل دعوات الموظفين بعد إعداد Edge Function.</p>
+<p class="msg">حالياً: المدير الرئيسي فقط يستطيع الدخول، ويمكنه إدارة المؤسسات والعمليات التي تسمح بها سياسات قاعدة البيانات.</p>
+</div>
+</section>
+</main>
+<footer>البيانات محفوظة في Supabase وتظهر عند الدخول من الأجهزة الأخرى. يلزم اتصال بالإنترنت للمزامنة.</footer>
+<script type="module" src="app.js"></script>
+</body></html>
