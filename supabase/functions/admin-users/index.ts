@@ -19,10 +19,37 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
-    const secretKey = Deno.env.get("SUPABASE_SECRET_KEY");
+
+    // Supabase hosted Edge Functions inject named keys as JSON objects.
+    // Keep singular and legacy fallbacks for local/older deployments.
+    const readDefaultKey = (pluralName: string): string | undefined => {
+      const raw = Deno.env.get(pluralName);
+      if (!raw) return undefined;
+      try {
+        const parsed = JSON.parse(raw);
+        return typeof parsed?.default === "string" ? parsed.default : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const anonKey =
+      readDefaultKey("SUPABASE_PUBLISHABLE_KEYS") ||
+      Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ||
+      Deno.env.get("SUPABASE_ANON_KEY");
+
+    const secretKey =
+      readDefaultKey("SUPABASE_SECRET_KEYS") ||
+      Deno.env.get("SUPABASE_SECRET_KEY") ||
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
     if (!supabaseUrl || !anonKey || !secretKey) {
-      return json({ error: "Server configuration is incomplete." }, 500);
+      console.error("Missing Edge Function environment:", {
+        supabaseUrl: Boolean(supabaseUrl),
+        anonKey: Boolean(anonKey),
+        secretKey: Boolean(secretKey)
+      });
+      return json({ error: "Server configuration is incomplete. Check Supabase Edge Function key configuration." }, 500);
     }
 
     const authHeader = req.headers.get("Authorization") || "";
