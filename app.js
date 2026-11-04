@@ -2,7 +2,7 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 // إعدادات المشروع العامة فقط. لا تضع sb_secret أو service_role هنا.
 const SUPABASE_URL = "https://bsrxfatlffybupsxoqxf.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "https://houssamosomos.github.io/Night-Audit-Manager/";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 const $ = id => document.getElementById(id);
