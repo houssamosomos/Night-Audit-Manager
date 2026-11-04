@@ -1,595 +1,393 @@
-
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-
-/* ==========================================
-   NIGHT AUDIT MANAGER
-   SUPABASE CONFIGURATION
-========================================== */
-
-const SUPABASE_URL =
-  "https://bsrxfatlffybupsxoqxf.supabase.co";
-
-const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu";
-
-const supabase = createClient(
-  SUPABASE_URL,
-  SUPABASE_PUBLISHABLE_KEY,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true
+const KEY = "night-auditor-v2";
+const defaults = [["23:00", "استلام المناوبة ومراجعة سجل التسليم"], ["23:30", "مراجعة الوصولات المتأخرة والحجوزات"], ["00:00", "مراجعة المدفوعات وحسابات النزلاء"], ["01:00", "التحقق من أسعار الغرف والعمليات المسجلة"], ["02:00", "مراجعة المداخيل والمصاريف ووسائل الدفع"], ["03:00", "تنفيذ الإغلاق الليلي حسب إجراءات الفندق"], ["04:00", "مراجعة التقارير والفروقات المالية"], ["06:00", "تحضير تقرير نهاية المناوبة"], ["07:00", "تسليم المناوبة وتوضيح الملاحظات"]];
+const fresh = () => ({
+    tasks: defaults.map( (x, i) => ({
+        id: i + 1,
+        time: x[0],
+        name: x[1],
+        repeat: 10,
+        status: "pending"
+    })),
+    ops: [],
+    rooms: {
+        total: 20,
+        occupied: 0,
+        arrivals: 0,
+        departures: 0,
+        openingCash: 0,
+        countedCash: 0,
+        movementNotes: ""
+    },
+    shift: {
+        start: "23:00",
+        end: "07:00"
+    },
+    handover: "",
+    history: []
+});
+let data;
+try {
+    data = JSON.parse(localStorage.getItem(KEY)) || fresh()
+} catch {
+    data = fresh()
+}
+let lang = "ar"
+  , notifiedAt = {};
+const $ = id => document.getElementById(id);
+const money = n => (Number(n) || 0).toLocaleString("fr-MA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+}) + " DH";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+}[c]));
+function totals() {
+    let inc = 0
+      , exp = 0
+      , cashInc = 0
+      , cashExp = 0
+      , roomRevenue = 0;
+    data.ops.forEach(o => {
+        let v = +o.amount || 0;
+        if (o.type === "income") {
+            inc += v;
+            if (o.payment === "cash")
+                cashInc += v;
+            if (o.category === "room")
+                roomRevenue += v
+        } else {
+            exp += v;
+            if (o.payment === "cash")
+                cashExp += v
+        }
     }
-  }
-);
-
-/* ==========================================
-   GLOBAL STATE
-========================================== */
-
-const $ = (id) => document.getElementById(id);
-
-let currentUser = null;
-let currentRole = "user";
-let currentProperty = null;
-let properties = [];
-let loadingTransactions = false;
-
-/* ==========================================
-   GENERAL FUNCTIONS
-========================================== */
-
-function show(id, visible) {
-  const element = $(id);
-  if (element) element.hidden = !visible;
-}
-
-function message(id, text, error = false) {
-  const element = $(id);
-
-  if (!element) {
-    console.warn(text);
-    return;
-  }
-
-  element.textContent = text;
-  element.style.color = error ? "#c0392b" : "#218c59";
-}
-
-function value(id) {
-  return $(id)?.value?.trim() || "";
-}
-
-function errorMessage(error) {
-  return error?.message || "Une erreur inconnue est survenue.";
-}
-
-function clearTransactions() {
-  if ($("transactions")) {
-    $("transactions").replaceChildren();
-  }
-
-  if ($("totals")) {
-    $("totals").textContent =
-      "المداخيل: 0.00 DH | المصاريف: 0.00 DH | الصافي: 0.00 DH";
-  }
-}
-
-/* ==========================================
-   AUTHENTICATION
-========================================== */
-
-async function initializeApp() {
-  try {
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error) throw error;
-
-    if (data.session?.user) {
-      await enterApp(data.session.user);
-    } else {
-      show("auth", true);
-      show("workspace", false);
-      show("logout", false);
-    }
-  } catch (error) {
-    message(
-      "authMsg",
-      "Erreur de connexion: " + errorMessage(error),
-      true
     );
-  }
-}
-
-async function enterApp(user) {
-  if (!user) return;
-  if (currentUser?.id === user.id && currentProperty) return;
-
-  currentUser = user;
-
-  try {
-    await loadCurrentProfile();
-    show("auth", false);
-    show("workspace", true);
-    show("logout", true);
-    await loadProperties();
-  } catch (error) {
-    console.error(error);
-    show("auth", true);
-    show("workspace", false);
-    show("logout", false);
-    message("authMsg", "تعذر تحميل صلاحيات الحساب: " + errorMessage(error), true);
-  }
-}
-
-async function loadCurrentProfile() {
-  const { data, error } = await supabase
-    .from("app_profiles")
-    .select("role, full_name")
-    .eq("user_id", currentUser.id)
-    .single();
-
-  if (error) throw error;
-
-  currentRole = data?.role || "user";
-  show("adminPanel", currentRole === "admin");
-
-  if (currentRole === "admin") {
-    await loadAdminUsers();
-  }
-}
-
-async function loadAdminUsers() {
-  if (currentRole !== "admin") return;
-
-  const { data, error } = await supabase.functions.invoke("admin-users", {
-    body: { action: "list" }
-  });
-
-  if (error) {
-    message("adminMsg", "تعذر تحميل المستخدمين. تأكد من نشر Edge Function.", true);
-    console.error(error);
-    return;
-  }
-
-  const tbody = $("adminUsers");
-  if (!tbody) return;
-  tbody.replaceChildren();
-
-  (data?.users || []).forEach((user) => {
-    const row = document.createElement("tr");
-    [user.full_name || "—", user.email || "—", user.role || "user"].forEach((value) => {
-      const cell = document.createElement("td");
-      cell.textContent = String(value);
-      row.appendChild(cell);
-    });
-    tbody.appendChild(row);
-  });
-
-  if (!(data?.users || []).length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 3;
-    cell.textContent = "لا يوجد مستخدمون بعد.";
-    row.appendChild(cell);
-    tbody.appendChild(row);
-  }
-}
-
-async function inviteUser(event) {
-  event.preventDefault();
-
-  if (currentRole !== "admin") {
-    message("adminMsg", "ليس لديك صلاحية إنشاء المستخدمين.", true);
-    return;
-  }
-
-  const fullName = value("newUserName");
-  const email = value("newUserEmail").toLowerCase();
-
-  if (!fullName || !email) {
-    message("adminMsg", "أدخل الاسم والبريد الإلكتروني.", true);
-    return;
-  }
-
-  message("adminMsg", "جارٍ إرسال الدعوة...");
-  const { data, error } = await supabase.functions.invoke("admin-users", {
-    body: {
-      action: "invite",
-      full_name: fullName,
-      email,
-      redirectTo: location.origin + location.pathname
+    return {
+        inc,
+        exp,
+        net: inc - exp,
+        cashInc,
+        cashExp,
+        roomRevenue
     }
-  });
-
-  if (error) {
-    message("adminMsg", error.message || "تعذر إنشاء الحساب.", true);
-    console.error(error);
-    return;
-  }
-
-  message("adminMsg", data?.message || "تم إرسال الدعوة بنجاح.");
-  $("inviteUserForm")?.reset();
-  await loadAdminUsers();
 }
-
-async function login(event) {
-  event.preventDefault();
-
-  const email = value("email");
-  const password = $("password")?.value || "";
-
-  if (!email || !password) {
-    message("authMsg", "Veuillez saisir votre email et mot de passe.", true);
-    return;
-  }
-
-  message("authMsg", "Connexion en cours...");
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  if (error) {
-    message("authMsg", errorMessage(error), true);
-    return;
-  }
-
-  message("authMsg", "Connexion réussie.");
+function save() {
+    localStorage.setItem(KEY, JSON.stringify(data));
+    $("saveState").textContent = "تم الحفظ محلياً على هذا الجهاز";
+    render()
 }
-
-async function logout() {
-  const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    message("authMsg", errorMessage(error), true);
-    return;
-  }
-
-  currentUser = null;
-  currentRole = "user";
-  currentProperty = null;
-  properties = [];
-
-  location.reload();
+function toast(s) {
+    $("toast").textContent = s;
+    $("toast").classList.add("show");
+    setTimeout( () => $("toast").classList.remove("show"), 2600)
 }
-
-/* ==========================================
-   HOTEL MANAGEMENT
-========================================== */
-
-async function loadProperties() {
-  if (!currentUser) return;
-
-  const { data, error } = await supabase
-    .from("hotel_members")
-    .select("hotel_id, role, hotels(id, name)")
-    .eq("user_id", currentUser.id);
-
-  if (error) {
-    message("propertyMsg", errorMessage(error), true);
-    console.error(error);
-    return;
-  }
-
-  properties = (data || [])
-    .map((item) => {
-      const hotel = Array.isArray(item.hotels)
-        ? item.hotels[0]
-        : item.hotels;
-
-      return hotel ? { ...hotel, role: item.role } : null;
+function isPast(time) {
+    let now = new Date()
+      , [h,m] = time.split(":").map(Number)
+      , d = new Date();
+    d.setHours(h, m, 0, 0);
+    let start = +data.shift.start.slice(0, 2);
+    if (start >= 12 && now.getHours() < 12 && h < 12)
+        d.setDate(d.getDate() + 1);
+    return now > d
+}
+function render() {
+    let t = totals()
+      , r = data.rooms
+      , occ = r.total ? 100 * r.occupied / r.total : 0
+      , adr = r.occupied ? t.roomRevenue / r.occupied : 0
+      , revpar = r.total ? t.roomRevenue / r.total : 0;
+    $("remaining").textContent = data.tasks.filter(x => x.status !== "done").length;
+    $("done").textContent = data.tasks.filter(x => x.status === "done").length;
+    $("net").textContent = money(t.net);
+    $("occupancy").textContent = occ.toFixed(1) + "%";
+    $("incomeTotal").textContent = money(t.inc);
+    $("expenseTotal").textContent = money(t.exp);
+    $("netTotal").textContent = money(t.net);
+    $("taskList").innerHTML = data.tasks.slice().sort( (a, b) => a.time.localeCompare(b.time)).map(x => {
+        let late = x.status !== "done" && isPast(x.time);
+        return `<article class="task ${x.status === "done" ? "done" : ""} ${late ? "overdue" : ""}"><div class="task-time">${x.time}</div><div><div class="task-name">${esc(x.name)}</div><small>${x.status === "done" ? "تم الإنجاز" : late ? "متأخرة — تحتاج متابعة" : "بانتظار التنفيذ"} · تذكير كل ${x.repeat} دقيقة</small></div><div class="task-actions">${x.status !== "done" ? `<button class="complete" onclick="completeTask(${x.id})">تم</button><button class="postpone" onclick="postponeTask(${x.id})">＋10 د</button>` : `<button onclick="undoTask(${x.id})">تراجع</button>`}</div></article>`
+    }
+    ).join("");
+    $("operationRows").innerHTML = data.ops.slice().reverse().map(o => `<tr><td>${o.time}</td><td>${o.type === "income" ? "مدخول" : "مصروف"}</td><td>${esc(o.categoryLabel)}</td><td>${money(o.amount)}</td><td>${esc(o.paymentLabel)}</td><td>${esc(o.note || "—")}</td><td><button onclick="deleteOp(${o.id})">✕</button></td></tr>`).join("") || `<tr><td colspan="7">لا توجد عمليات مسجلة</td></tr>`;
+    $("occKpi").textContent = occ.toFixed(1) + "%";
+    $("adrKpi").textContent = money(adr);
+    $("revparKpi").textContent = money(revpar);
+    let expected = +r.openingCash + t.cashInc - t.cashExp
+      , diff = +r.countedCash - expected;
+    $("expectedCash").textContent = "الرصيد النظري: " + money(expected);
+    $("cashDifference").textContent = "الفرق: " + money(diff);
+    $("cashDifference").style.color = Math.abs(diff) < .005 ? "var(--green)" : "var(--red)";
+    makeReport();
+    renderHistory()
+}
+function makeReport() {
+    let t = totals()
+      , r = data.rooms
+      , done = data.tasks.filter(x => x.status === "done").length
+      , occ = r.total ? 100 * r.occupied / r.total : 0;
+    $("reportContent").innerHTML = `<h3>تقرير المناوبة الليلية</h3><p>${new Date().toLocaleString()}</p><div class="report-grid">
+<div class="report-item"><b>المهام المنجزة</b><br>${done}/${data.tasks.length}</div><div class="report-item"><b>الإشغال</b><br>${r.occupied}/${r.total} (${occ.toFixed(1)}%)</div>
+<div class="report-item"><b>الوصولات / المغادرات</b><br>${r.arrivals} / ${r.departures}</div><div class="report-item"><b>مداخيل الغرف</b><br>${money(t.roomRevenue)}</div>
+<div class="report-item"><b>ADR</b><br>${money(r.occupied ? t.roomRevenue / r.occupied : 0)}</div><div class="report-item"><b>RevPAR</b><br>${money(r.total ? t.roomRevenue / r.total : 0)}</div>
+<div class="report-item"><b>المداخيل</b><br>${money(t.inc)}</div><div class="report-item"><b>المصاريف</b><br>${money(t.exp)}</div>
+<div class="report-item"><b>الصافي</b><br>${money(t.net)}</div><div class="report-item"><b>الصندوق النظري / الفعلي</b><br>${money(+r.openingCash + t.cashInc - t.cashExp)} / ${money(r.countedCash)}</div></div>
+<p><b>ملاحظات الحركة:</b><br>${esc(r.movementNotes || "—")}</p><p><b>المهام غير المنجزة:</b><br>${data.tasks.filter(x => x.status !== "done").map(x => esc(x.time + " — " + x.name)).join("<br>") || "—"}</p><p><b>تسليم المناوبة:</b><br>${esc(data.handover || "—")}</p>`
+}
+function renderHistory() {
+    $("historyList").innerHTML = (data.history || []).slice().reverse().map( (h, i) => `<article class="task"><div class="task-time">${esc(h.date)}</div><div><div class="task-name">صافي: ${money(h.net)} · إشغال: ${h.occupancy}%</div><small>مداخيل ${money(h.income)} · مصاريف ${money(h.expense)} · مهام ${h.done}/${h.total}</small></div><div class="task-actions"><button onclick="viewArchive(${data.history.length - 1 - i})">عرض الملخص</button></div></article>`).join("") || '<div class="panel">لا توجد مناوبات محفوظة بعد.</div>'
+}
+window.viewArchive = i => {
+    let h = data.history[i];
+    if (h)
+        alert(h.summary)
+}
+;
+window.completeTask = id => {
+    let x = data.tasks.find(t => t.id === id);
+    if (x)
+        x.status = "done";
+    save()
+}
+;
+window.undoTask = id => {
+    let x = data.tasks.find(t => t.id === id);
+    if (x)
+        x.status = "pending";
+    save()
+}
+;
+window.postponeTask = id => {
+    let x = data.tasks.find(t => t.id === id);
+    if (x) {
+        let d = new Date()
+          , [h,m] = x.time.split(":").map(Number);
+        d.setHours(h, m + 10, 0, 0);
+        x.time = d.toTimeString().slice(0, 5);
+        notifiedAt[id] = Date.now()
+    }
+    save()
+}
+;
+window.deleteOp = id => {
+    data.ops = data.ops.filter(x => x.id !== id);
+    save()
+}
+;
+function alertTask(x) {
+    let msg = "تذكير بمهمة المناوبة: " + x.name;
+    toast(msg);
+    try {
+        let C = AudioContext || webkitAudioContext
+          , c = new C()
+          , o = c.createOscillator()
+          , g = c.createGain();
+        o.connect(g);
+        g.connect(c.destination);
+        o.frequency.value = 880;
+        g.gain.value = .07;
+        o.start();
+        o.stop(c.currentTime + .25)
+    } catch {}
+    if ("Notification" in window && Notification.permission === "granted")
+        new Notification("Night Auditor Assistant",{
+            body: msg,
+            tag: "task-" + x.id,
+            renotify: true
+        })
+}
+function tick() {
+    let n = new Date();
+    $("clock").textContent = n.toLocaleTimeString("ar-MA");
+    $("dateLine").textContent = n.toLocaleDateString("ar-MA", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+    });
+    data.tasks.forEach(x => {
+        if (x.status !== "done" && isPast(x.time) && Date.now() - (notifiedAt[x.id] || 0) >= x.repeat * 60000) {
+            notifiedAt[x.id] = Date.now();
+            alertTask(x)
+        }
+    }
+    )
+}
+$("notifyBtn").onclick = async () => {
+    if (!("Notification" in window)) {
+        toast("المتصفح لا يدعم إشعارات النظام");
+        return
+    }
+    let p = await Notification.requestPermission();
+    toast(p === "granted" ? "تم تفعيل الإشعارات" : "لم يتم السماح بالإشعارات")
+}
+;
+$("saveShift").onclick = () => {
+    data.shift = {
+        start: $("shiftStart").value,
+        end: $("shiftEnd").value
+    };
+    save();
+    toast("تم حفظ توقيت المناوبة")
+}
+;
+$("operationForm").onsubmit = e => {
+    e.preventDefault();
+    let cat = $("opCategory")
+      , pay = $("opPayment");
+    data.ops.push({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        }),
+        type: $("opType").value,
+        category: cat.value,
+        categoryLabel: cat.selectedOptions[0].textContent,
+        amount: +$("opAmount").value,
+        payment: pay.value,
+        paymentLabel: pay.selectedOptions[0].textContent,
+        note: $("opNote").value
+    });
+    e.target.reset();
+    save();
+    toast("تم تسجيل العملية")
+}
+;
+$("roomsForm").onsubmit = e => {
+    e.preventDefault();
+    let r = {};
+    for (let[id,k] of [["totalRooms", "total"], ["occupiedRooms", "occupied"], ["arrivals", "arrivals"], ["departures", "departures"], ["openingCash", "openingCash"], ["countedCash", "countedCash"], ["movementNotes", "movementNotes"]])
+        r[k] = $(id).value;
+    Object.keys(r).forEach(k => {
+        if (k !== "movementNotes")
+            r[k] = +r[k]
+    }
+    );
+    data.rooms = r;
+    save();
+    toast("تم حفظ بيانات الغرف")
+}
+;
+$("addTaskBtn").onclick = () => $("taskDialog").showModal();
+$("confirmTask").onclick = e => {
+    e.preventDefault();
+    data.tasks.push({
+        id: Date.now(),
+        time: $("newTaskTime").value,
+        name: $("newTaskName").value,
+        repeat: +$("newTaskRepeat").value || 10,
+        status: "pending"
+    });
+    $("taskDialog").close();
+    $("taskForm").reset();
+    save()
+}
+;
+$("printReport").onclick = () => window.print();
+$("saveHandover").onclick = () => {
+    data.handover = $("handover").value;
+    save();
+    toast("تم حفظ الملاحظات")
+}
+;
+$("archiveBtn").onclick = () => {
+    let t = totals()
+      , r = data.rooms
+      , occ = r.total ? +(100 * r.occupied / r.total).toFixed(1) : 0;
+    let summary = $("reportContent").innerText;
+    data.history.push({
+        date: new Date().toLocaleString(),
+        income: t.inc,
+        expense: t.exp,
+        net: t.net,
+        occupancy: occ,
+        done: data.tasks.filter(x => x.status === "done").length,
+        total: data.tasks.length,
+        summary
+    });
+    save();
+    toast("تم حفظ المناوبة في السجل")
+}
+;
+$("exportBtn").onclick = () => {
+    let blob = new Blob([JSON.stringify(data, null, 2)],{
+        type: "application/json"
     })
-    .filter(Boolean);
-
-  const select = $("propertySelect");
-
-  if (!select) {
-    message("propertyMsg", "propertySelect introuvable dans index.html.", true);
-    return;
-  }
-
-  select.replaceChildren();
-
-  properties.forEach((hotel) => {
-    const option = document.createElement("option");
-
-    option.value = hotel.id;
-    option.textContent = `${hotel.name} — ${hotel.role || ""}`;
-
-    select.appendChild(option);
-  });
-
-  if (properties.length > 0) {
-    currentProperty = properties[0].id;
-    select.value = String(currentProperty);
-
-    await loadTransactions();
-  } else {
-    currentProperty = null;
-    clearTransactions();
-
-    message(
-      "propertyMsg",
-      "Aucun établissement associé à ce compte. Ajoutez un établissement."
+      , url = URL.createObjectURL(blob)
+      , a = document.createElement("a");
+    a.href = url;
+    a.download = "night-auditor-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("تم إنشاء النسخة الاحتياطية")
+}
+;
+$("importFile").onchange = async e => {
+    let f = e.target.files[0];
+    if (!f)
+        return;
+    try {
+        let obj = JSON.parse(await f.text());
+        if (!obj.tasks || !obj.ops || !obj.rooms)
+            throw Error();
+        if (confirm("سيتم استبدال البيانات الحالية بالنسخة المختارة. هل تريد المتابعة؟")) {
+            data = {
+                ...fresh(),
+                ...obj
+            };
+            fillForms();
+            save();
+            toast("تم استيراد النسخة الاحتياطية")
+        }
+    } catch {
+        toast("الملف غير صالح أو ليس نسخة احتياطية مناسبة")
+    }
+    e.target.value = ""
+}
+;
+$("resetBtn").onclick = () => {
+    if (confirm("سيتم مسح بيانات المناوبة الحالية. احفظ نسخة احتياطية أولاً. هل تريد المتابعة؟")) {
+        let hist = data.history || [];
+        data = fresh();
+        data.history = hist;
+        notifiedAt = {};
+        fillForms();
+        save()
+    }
+}
+;
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".tab,.tabpane").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    $(b.dataset.tab).classList.add("active")
+}
+);
+$("langBtn").onclick = () => {
+    lang = lang === "ar" ? "fr" : "ar";
+    document.body.classList.toggle("fr", lang === "fr");
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    document.documentElement.lang = lang;
+    $("appTitle").textContent = lang === "ar" ? "مساعد الاستقبال والمدقق الليلي" : "Assistant réception & audit de nuit";
+    toast(lang === "ar" ? "تم اختيار العربية" : "Mode français partiel : certains libellés restent en arabe")
+}
+;
+function fillForms() {
+    let r = data.rooms;
+    $("shiftStart").value = data.shift.start;
+    $("shiftEnd").value = data.shift.end;
+    for (let[id,k] of [["totalRooms", "total"], ["occupiedRooms", "occupied"], ["arrivals", "arrivals"], ["departures", "departures"], ["openingCash", "openingCash"], ["countedCash", "countedCash"], ["movementNotes", "movementNotes"]])
+        $(id).value = r[k] ?? 0;
+    $("handover").value = data.handover || ""
+}
+if ("serviceWorker" in navigator && location.protocol !== "file:")
+    navigator.serviceWorker.register("./sw.js").catch( () => {}
     );
-  }
-}
-
-async function addProperty() {
-  const name = prompt("Nom de l'hôtel ou du Riad:");
-
-  if (!name?.trim()) return;
-
-  message("propertyMsg", "Création en cours...");
-
-  const { data, error } = await supabase.rpc("create_hotel", {
-    p_name: name.trim()
-  });
-
-  if (error) {
-    message("propertyMsg", errorMessage(error), true);
-    console.error(error);
-    return;
-  }
-
-  await loadProperties();
-
-  const newId =
-    typeof data === "string"
-      ? data
-      : data?.id || data?.hotel_id;
-
-  if (newId && properties.some((hotel) =>
-    String(hotel.id) === String(newId)
-  )) {
-    currentProperty = newId;
-    $("propertySelect").value = String(newId);
-    await loadTransactions();
-  }
-
-  message("propertyMsg", "Demande de création exécutée.");
-}
-
-async function renameProperty() {
-  if (!currentProperty) {
-    message("propertyMsg", "Choisissez un établissement.", true);
-    return;
-  }
-
-  const name = value("renameInput");
-
-  if (!name) {
-    message("propertyMsg", "Saisissez le nouveau nom.", true);
-    return;
-  }
-
-  const { error } = await supabase
-    .from("hotels")
-    .update({ name })
-    .eq("id", currentProperty);
-
-  if (error) {
-    message("propertyMsg", errorMessage(error), true);
-    return;
-  }
-
-  await loadProperties();
-
-  if ($("propertySelect")) {
-    $("propertySelect").value = String(currentProperty);
-  }
-
-  message("propertyMsg", "Nom modifié avec succès.");
-}
-
-/* ==========================================
-   TRANSACTION MANAGEMENT
-========================================== */
-
-async function addTransaction(event) {
-  event.preventDefault();
-
-  if (!currentUser || !currentProperty) {
-    message("txMsg", "Connectez-vous et choisissez un établissement.", true);
-    return;
-  }
-
-  const amount = Number(value("amount"));
-  const category = value("category");
-  const type = value("type");
-
-  if (!Number.isFinite(amount) || amount <= 0) {
-    message("txMsg", "Montant invalide.", true);
-    return;
-  }
-
-  if (!category) {
-    message("txMsg", "Veuillez saisir une catégorie.", true);
-    return;
-  }
-
-  if (!["income", "expense"].includes(type)) {
-    message("txMsg", "Type de transaction invalide.", true);
-    return;
-  }
-
-  const transaction = {
-    hotel_id: currentProperty,
-    created_by: currentUser.id,
-    transaction_type: type,
-    category: category,
-    amount: amount,
-    payment_method: value("payment"),
-    description: value("description")
-  };
-
-  message("txMsg", "Enregistrement en cours...");
-
-  const { error } = await supabase
-    .from("transactions")
-    .insert(transaction);
-
-  if (error) {
-    message("txMsg", errorMessage(error), true);
-    console.error(error);
-    return;
-  }
-
-  message("txMsg", "Transaction enregistrée avec succès.");
-
-  $("transactionForm")?.reset();
-
-  await loadTransactions();
-}
-
-/* ==========================================
-   LOAD TRANSACTIONS
-========================================== */
-
-async function loadTransactions() {
-  if (!currentProperty || loadingTransactions) {
-    if (!currentProperty) clearTransactions();
-    return;
-  }
-
-  loadingTransactions = true;
-
-  try {
-    const { data, error } = await supabase
-      .from("transactions")
-      .select(`
-        created_at,
-        transaction_type,
-        category,
-        amount,
-        payment_method,
-        description
-      `)
-      .eq("hotel_id", currentProperty)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-
-    const table = $("transactions");
-
-    if (!table) {
-      message("txMsg", "Table des transactions introuvable.", true);
-      return;
-    }
-
-    table.replaceChildren();
-
-    let income = 0;
-    let expense = 0;
-
-    (data || []).forEach((item) => {
-      const amount = Number(item.amount) || 0;
-
-      if (item.transaction_type === "income") {
-        income += amount;
-      } else if (item.transaction_type === "expense") {
-        expense += amount;
-      }
-
-      const row = document.createElement("tr");
-
-      const fields = [
-        item.created_at
-          ? new Date(item.created_at).toLocaleString("fr-FR")
-          : "",
-        item.transaction_type === "income" ? "مدخول" : "مصروف",
-        item.category || "",
-        amount.toFixed(2) + " DH",
-        item.payment_method || "",
-        item.description || ""
-      ];
-
-      fields.forEach((field) => {
-        const cell = document.createElement("td");
-        cell.textContent = String(field);
-        row.appendChild(cell);
-      });
-
-      table.appendChild(row);
-    });
-
-    const net = income - expense;
-
-    if ($("totals")) {
-      $("totals").textContent =
-        `المداخيل: ${income.toFixed(2)} DH | ` +
-        `المصاريف: ${expense.toFixed(2)} DH | ` +
-        `الصافي: ${net.toFixed(2)} DH`;
-    }
-
-  } catch (error) {
-    message(
-      "txMsg",
-      "Erreur de chargement: " + errorMessage(error),
-      true
-    );
-
-    console.error(error);
-
-  } finally {
-    loadingTransactions = false;
-  }
-}
-
-/* ==========================================
-   EVENT LISTENERS
-========================================== */
-
-$("loginForm")?.addEventListener("submit", login);
-
-$("logout")?.addEventListener("click", logout);
-
-$("addProperty")?.addEventListener("click", addProperty);
-
-$("renameProperty")?.addEventListener("click", renameProperty);
-
-$("transactionForm")?.addEventListener("submit", addTransaction);
-
-$("refresh")?.addEventListener("click", loadTransactions);
-$("inviteUserForm")?.addEventListener("submit", inviteUser);
-$("refreshUsers")?.addEventListener("click", loadAdminUsers);
-
-$("propertySelect")?.addEventListener("change", async (event) => {
-  currentProperty = event.target.value || null;
-  await loadTransactions();
-});
-
-/* ==========================================
-   AUTH STATE CHANGES
-========================================== */
-
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === "SIGNED_IN" && session?.user) {
-    if (currentUser?.id !== session.user.id) {
-      void enterApp(session.user);
-    }
-  }
-
-  if (event === "SIGNED_OUT") {
-    currentUser = null;
-    currentRole = "user";
-    currentProperty = null;
-    properties = [];
-
-    show("auth", true);
-    show("workspace", false);
-    show("logout", false);
-
-    clearTransactions();
-  }
-});
-
-/* ==========================================
-   START APPLICATION
-========================================== */
-
-void initializeApp();
+fillForms();
+render();
+tick();
+setInterval(tick, 15000);
