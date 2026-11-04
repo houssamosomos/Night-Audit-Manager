@@ -3,10 +3,15 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // إعدادات المشروع العامة فقط. لا تضع sb_secret أو service_role هنا.
 const SUPABASE_URL = "https://bsrxfatlffybupsxoqxf.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "https://houssamosomos.github.io/Night-Audit-Manager/";
-const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const supabase = createClient(sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu);
 
 const $ = id => document.getElementById(id);
-let properties = [], currentProperty = null, currentUser = null;
+let properties = [], currentProperty = null, currentUs";
+
+// إعدادات المشروع العامة فقط. لا تضع sb_secret أو service_role هنا.
+const SUPABASE_URL = "https://bsrxfatlffybupsxoqxf.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "https://houssamosomos.github.io/Night-Audit-Manager/";
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEer = null;
 const show = (id, yes) => $(id).hidden = !yes;
 const msg = (id, text, error=false) => { $(id).textContent=text; $(id).style.color=error?"#b42318":"#23734d"; };
 
