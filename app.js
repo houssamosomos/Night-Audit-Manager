@@ -1,14 +1,16 @@
 
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-// Supabase public configuration
-const SUPABASE_URL = "https://bsrxfatlffybupsxoqxf.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu";
+/* ==========================================
+   NIGHT AUDIT MANAGER
+   SUPABASE CONFIGURATION
+========================================== */
 
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error("Supabase configuration is missing.");
-}
+const SUPABASE_URL =
+  "https://bsrxfatlffybupsxoqxf.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_Ldcy0B7_k8_zRpee5DUoA_3mbl4oUu";
 
 const supabase = createClient(
   SUPABASE_URL,
@@ -18,54 +20,94 @@ const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true
-    },
-    global: {
-      headers: {
-        apikey: SUPABASE_PUBLISHABLE_KEY
-      }
     }
   }
 );
 
-const $ = id => document.getElementById(id);
+/* ==========================================
+   GLOBAL STATE
+========================================== */
 
-let properties = [];
-let currentProperty = null;
+const $ = (id) => document.getElementById(id);
+
 let currentUser = null;
+let currentProperty = null;
+let properties = [];
+let loadingTransactions = false;
 
-const show = (id, yes) => {
-  $(id).hidden = !yes;
-};
+/* ==========================================
+   GENERAL FUNCTIONS
+========================================== */
 
-const msg = (id, text, error = false) => {
-  $(id).textContent = text;
-  $(id).style.color = error ? "#b42318" : "#23734d";
-};
+function show(id, visible) {
+  const element = $(id);
+  if (element) element.hidden = !visible;
+}
 
-// Initialize application
-async function boot() {
+function message(id, text, error = false) {
+  const element = $(id);
+
+  if (!element) {
+    console.warn(text);
+    return;
+  }
+
+  element.textContent = text;
+  element.style.color = error ? "#c0392b" : "#218c59";
+}
+
+function value(id) {
+  return $(id)?.value?.trim() || "";
+}
+
+function errorMessage(error) {
+  return error?.message || "Une erreur inconnue est survenue.";
+}
+
+function clearTransactions() {
+  if ($("transactions")) {
+    $("transactions").replaceChildren();
+  }
+
+  if ($("totals")) {
+    $("totals").textContent =
+      "المداخيل: 0.00 DH | المصاريف: 0.00 DH | الصافي: 0.00 DH";
+  }
+}
+
+/* ==========================================
+   AUTHENTICATION
+========================================== */
+
+async function initializeApp() {
   try {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) throw error;
 
-    if (data.session) {
-      await enter(data.session.user);
+    if (data.session?.user) {
+      await enterApp(data.session.user);
     } else {
       show("auth", true);
       show("workspace", false);
+      show("logout", false);
     }
   } catch (error) {
-    console.error("Boot error:", error);
-    show("auth", true);
-    show("workspace", false);
-    msg("authMsg", "تعذر الاتصال: " + error.message, true);
+    message(
+      "authMsg",
+      "Erreur de connexion: " + errorMessage(error),
+      true
+    );
   }
 }
 
-// Enter workspace
-async function enter(user) {
+async function enterApp(user) {
+  if (!user) return;
+
+  if (currentUser?.id === user.id && currentProperty) return;
+
   currentUser = user;
+
   show("auth", false);
   show("workspace", true);
   show("logout", true);
@@ -73,116 +115,155 @@ async function enter(user) {
   await loadProperties();
 }
 
-// Load hotels
+async function login(event) {
+  event.preventDefault();
+
+  const email = value("email");
+  const password = $("password")?.value || "";
+
+  if (!email || !password) {
+    message("authMsg", "Veuillez saisir votre email et mot de passe.", true);
+    return;
+  }
+
+  message("authMsg", "Connexion en cours...");
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    message("authMsg", errorMessage(error), true);
+    return;
+  }
+
+  message("authMsg", "Connexion réussie.");
+}
+
+async function logout() {
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    message("authMsg", errorMessage(error), true);
+    return;
+  }
+
+  currentUser = null;
+  currentProperty = null;
+  properties = [];
+
+  location.reload();
+}
+
+/* ==========================================
+   HOTEL MANAGEMENT
+========================================== */
+
 async function loadProperties() {
+  if (!currentUser) return;
+
   const { data, error } = await supabase
     .from("hotel_members")
-    .select("hotel_id,role,hotels(id,name)")
+    .select("hotel_id, role, hotels(id, name)")
     .eq("user_id", currentUser.id);
 
   if (error) {
-    console.error("Hotel loading error:", error);
-    msg("propertyMsg", "تعذر تحميل المؤسسات: " + error.message, true);
+    message("propertyMsg", errorMessage(error), true);
+    console.error(error);
     return;
   }
 
   properties = (data || [])
-    .map(x => ({ ...x.hotels, role: x.role }))
+    .map((item) => {
+      const hotel = Array.isArray(item.hotels)
+        ? item.hotels[0]
+        : item.hotels;
+
+      return hotel ? { ...hotel, role: item.role } : null;
+    })
     .filter(Boolean);
 
-  const sel = $("propertySelect");
-  sel.innerHTML = "";
+  const select = $("propertySelect");
 
-  properties.forEach(p => {
+  if (!select) {
+    message("propertyMsg", "propertySelect introuvable dans index.html.", true);
+    return;
+  }
+
+  select.replaceChildren();
+
+  properties.forEach((hotel) => {
     const option = document.createElement("option");
-    option.value = p.id;
-    option.textContent = p.name + " — " + p.role;
-    sel.append(option);
+
+    option.value = hotel.id;
+    option.textContent = `${hotel.name} — ${hotel.role || ""}`;
+
+    select.appendChild(option);
   });
 
-  if (properties.length) {
+  if (properties.length > 0) {
     currentProperty = properties[0].id;
-    sel.value = currentProperty;
+    select.value = String(currentProperty);
+
     await loadTransactions();
   } else {
     currentProperty = null;
-    msg(
+    clearTransactions();
+
+    message(
       "propertyMsg",
-      "لا توجد مؤسسة مرتبطة بهذا الحساب بعد. استخدم إضافة مؤسسة."
+      "Aucun établissement associé à ce compte. Ajoutez un établissement."
     );
   }
 }
 
-// Login
-$("loginForm").addEventListener("submit", async e => {
-  e.preventDefault();
-
-  msg("authMsg", "جارٍ تسجيل الدخول...");
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: $("email").value.trim(),
-    password: $("password").value
-  });
-
-  if (error) {
-    console.error("Login error:", error);
-    msg("authMsg", error.message, true);
-    return;
-  }
-
-  await enter(data.user);
-});
-
-// Logout
-$("logout").onclick = async () => {
-  const { error } = await supabase.auth.signOut();
-
-  if (error) {
-    console.error("Logout error:", error);
-    return;
-  }
-
-  location.reload();
-};
-
-// Add hotel
-$("addProperty").onclick = async () => {
-  const name = prompt("اكتب اسم الفندق أو الرياض الجديد:");
+async function addProperty() {
+  const name = prompt("Nom de l'hôtel ou du Riad:");
 
   if (!name?.trim()) return;
+
+  message("propertyMsg", "Création en cours...");
 
   const { data, error } = await supabase.rpc("create_hotel", {
     p_name: name.trim()
   });
 
   if (error) {
-    console.error("Create hotel error:", error);
-    msg("propertyMsg", "تعذر إنشاء المؤسسة: " + error.message, true);
+    message("propertyMsg", errorMessage(error), true);
+    console.error(error);
     return;
   }
 
   await loadProperties();
 
-  $("propertySelect").value = data;
-  currentProperty = data;
+  const newId =
+    typeof data === "string"
+      ? data
+      : data?.id || data?.hotel_id;
 
-  msg("propertyMsg", "تم إنشاء المؤسسة بنجاح.");
-};
+  if (newId && properties.some((hotel) =>
+    String(hotel.id) === String(newId)
+  )) {
+    currentProperty = newId;
+    $("propertySelect").value = String(newId);
+    await loadTransactions();
+  }
 
-// Change hotel
-$("propertySelect").onchange = async () => {
-  currentProperty = $("propertySelect").value;
-  await loadTransactions();
-};
+  message("propertyMsg", "Demande de création exécutée.");
+}
 
-// Rename hotel
-$("renameProperty").onclick = async () => {
-  if (!currentProperty) return;
+async function renameProperty() {
+  if (!currentProperty) {
+    message("propertyMsg", "Choisissez un établissement.", true);
+    return;
+  }
 
-  const name = $("renameInput").value.trim();
+  const name = value("renameInput");
 
   if (!name) {
-    return msg("propertyMsg", "اكتب الاسم الجديد.", true);
+    message("propertyMsg", "Saisissez le nouveau nom.", true);
+    return;
   }
 
   const { error } = await supabase
@@ -191,121 +272,221 @@ $("renameProperty").onclick = async () => {
     .eq("id", currentProperty);
 
   if (error) {
-    console.error("Rename error:", error);
-    msg("propertyMsg", "تعذر تغيير الاسم: " + error.message, true);
+    message("propertyMsg", errorMessage(error), true);
     return;
   }
 
-  msg("propertyMsg", "تم تغيير اسم المؤسسة.");
-
   await loadProperties();
-  $("propertySelect").value = currentProperty;
-};
 
-// Add transaction
-$("transactionForm").onsubmit = async e => {
-  e.preventDefault();
-
-  if (!currentProperty) {
-    return msg("txMsg", "اختر مؤسسة أولاً.", true);
+  if ($("propertySelect")) {
+    $("propertySelect").value = String(currentProperty);
   }
 
-  const row = {
+  message("propertyMsg", "Nom modifié avec succès.");
+}
+
+/* ==========================================
+   TRANSACTION MANAGEMENT
+========================================== */
+
+async function addTransaction(event) {
+  event.preventDefault();
+
+  if (!currentUser || !currentProperty) {
+    message("txMsg", "Connectez-vous et choisissez un établissement.", true);
+    return;
+  }
+
+  const amount = Number(value("amount"));
+  const category = value("category");
+  const type = value("type");
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    message("txMsg", "Montant invalide.", true);
+    return;
+  }
+
+  if (!category) {
+    message("txMsg", "Veuillez saisir une catégorie.", true);
+    return;
+  }
+
+  if (!["income", "expense"].includes(type)) {
+    message("txMsg", "Type de transaction invalide.", true);
+    return;
+  }
+
+  const transaction = {
     hotel_id: currentProperty,
     created_by: currentUser.id,
-    transaction_type: $("type").value,
-    category: $("category").value.trim(),
-    amount: Number($("amount").value),
-    payment_method: $("payment").value,
-    description: $("description").value.trim()
+    transaction_type: type,
+    category: category,
+    amount: amount,
+    payment_method: value("payment"),
+    description: value("description")
   };
+
+  message("txMsg", "Enregistrement en cours...");
 
   const { error } = await supabase
     .from("transactions")
-    .insert(row);
+    .insert(transaction);
 
   if (error) {
-    console.error("Insert transaction error:", error);
-    msg("txMsg", "تعذر حفظ العملية: " + error.message, true);
+    message("txMsg", errorMessage(error), true);
+    console.error(error);
     return;
   }
 
-  msg("txMsg", "تم حفظ العملية ومزامنتها.");
+  message("txMsg", "Transaction enregistrée avec succès.");
 
-  $("transactionForm").reset();
+  $("transactionForm")?.reset();
+
   await loadTransactions();
-};
-
-// Refresh
-$("refresh").onclick = loadTransactions;
-
-// Load transactions
-async function loadTransactions() {
-  if (!currentProperty) return;
-
-  const { data, error } = await supabase
-    .from("transactions")
-    .select(
-      "created_at,transaction_type,category,amount,payment_method,description"
-    )
-    .eq("hotel_id", currentProperty)
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (error) {
-    console.error("Transaction loading error:", error);
-    msg("txMsg", "تعذر تحميل السجل: " + error.message, true);
-    return;
-  }
-
-  const body = $("transactions");
-  body.innerHTML = "";
-
-  let income = 0;
-  let expense = 0;
-
-  (data || []).forEach(r => {
-    if (r.transaction_type === "income") {
-      income += Number(r.amount);
-    } else {
-      expense += Number(r.amount);
-    }
-
-    const tr = document.createElement("tr");
-
-    [
-      new Date(r.created_at).toLocaleString("fr-FR"),
-      r.transaction_type === "income" ? "مدخول" : "مصروف",
-      r.category,
-      Number(r.amount).toFixed(2) + " DH",
-      r.payment_method,
-      r.description || ""
-    ].forEach(value => {
-      const td = document.createElement("td");
-      td.textContent = value;
-      tr.append(td);
-    });
-
-    body.append(tr);
-  });
-
-  $("totals").textContent =
-    `المداخيل: ${income.toFixed(2)} DH | ` +
-    `المصاريف: ${expense.toFixed(2)} DH | ` +
-    `الصافي: ${(income - expense).toFixed(2)} DH`;
 }
 
-// Authentication state
-supabase.auth.onAuthStateChange((_event, session) => {
-  if (session && !currentUser) {
-    enter(session.user);
+/* ==========================================
+   LOAD TRANSACTIONS
+========================================== */
+
+async function loadTransactions() {
+  if (!currentProperty || loadingTransactions) {
+    if (!currentProperty) clearTransactions();
+    return;
   }
 
-  if (!session && currentUser) {
+  loadingTransactions = true;
+
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(`
+        created_at,
+        transaction_type,
+        category,
+        amount,
+        payment_method,
+        description
+      `)
+      .eq("hotel_id", currentProperty)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const table = $("transactions");
+
+    if (!table) {
+      message("txMsg", "Table des transactions introuvable.", true);
+      return;
+    }
+
+    table.replaceChildren();
+
+    let income = 0;
+    let expense = 0;
+
+    (data || []).forEach((item) => {
+      const amount = Number(item.amount) || 0;
+
+      if (item.transaction_type === "income") {
+        income += amount;
+      } else if (item.transaction_type === "expense") {
+        expense += amount;
+      }
+
+      const row = document.createElement("tr");
+
+      const fields = [
+        item.created_at
+          ? new Date(item.created_at).toLocaleString("fr-FR")
+          : "",
+        item.transaction_type === "income" ? "مدخول" : "مصروف",
+        item.category || "",
+        amount.toFixed(2) + " DH",
+        item.payment_method || "",
+        item.description || ""
+      ];
+
+      fields.forEach((field) => {
+        const cell = document.createElement("td");
+        cell.textContent = String(field);
+        row.appendChild(cell);
+      });
+
+      table.appendChild(row);
+    });
+
+    const net = income - expense;
+
+    if ($("totals")) {
+      $("totals").textContent =
+        `المداخيل: ${income.toFixed(2)} DH | ` +
+        `المصاريف: ${expense.toFixed(2)} DH | ` +
+        `الصافي: ${net.toFixed(2)} DH`;
+    }
+
+  } catch (error) {
+    message(
+      "txMsg",
+      "Erreur de chargement: " + errorMessage(error),
+      true
+    );
+
+    console.error(error);
+
+  } finally {
+    loadingTransactions = false;
+  }
+}
+
+/* ==========================================
+   EVENT LISTENERS
+========================================== */
+
+$("loginForm")?.addEventListener("submit", login);
+
+$("logout")?.addEventListener("click", logout);
+
+$("addProperty")?.addEventListener("click", addProperty);
+
+$("renameProperty")?.addEventListener("click", renameProperty);
+
+$("transactionForm")?.addEventListener("submit", addTransaction);
+
+$("refresh")?.addEventListener("click", loadTransactions);
+
+$("propertySelect")?.addEventListener("change", async (event) => {
+  currentProperty = event.target.value || null;
+  await loadTransactions();
+});
+
+/* ==========================================
+   AUTH STATE CHANGES
+========================================== */
+
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === "SIGNED_IN" && session?.user) {
+    if (currentUser?.id !== session.user.id) {
+      void enterApp(session.user);
+    }
+  }
+
+  if (event === "SIGNED_OUT") {
     currentUser = null;
-    location.reload();
+    currentProperty = null;
+    properties = [];
+
+    show("auth", true);
+    show("workspace", false);
+    show("logout", false);
+
+    clearTransactions();
   }
 });
 
-// Start
-boot();
+/* ==========================================
+   START APPLICATION
+========================================== */
+
+void initializeApp();
