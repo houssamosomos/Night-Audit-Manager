@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
     const secretKey = Deno.env.get("SUPABASE_SECRET_KEY");
     if (!supabaseUrl || !anonKey || !secretKey) {
       return json({ error: "Server configuration is incomplete." }, 500);
