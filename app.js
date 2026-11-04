@@ -30,7 +30,7 @@ async function loadProperties(){
   const sel=$("propertySelect"); sel.innerHTML="";
   properties.forEach(p=>{const o=document.createElement("option");o.value=p.id;o.textContent=p.name+" — "+p.role;sel.append(o);});
   if(properties.length){currentProperty=properties[0].id;sel.value=currentProperty;await loadTransactions();}
-  else {currentProperty=null;msg("propertyMsg","لا توجد مؤسسة مرتبطة بهذا الحساب بعد. استخدم إضافة مؤسسة.");}
+  else {currentProperty=null;msg("propertyMsg","sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu");}
 }
 $("loginForm").addEventListener("submit",async e=>{
  e.preventDefault();msg("authMsg","جارٍ تسجيل الدخول...");
