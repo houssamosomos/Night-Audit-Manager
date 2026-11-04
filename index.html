@@ -37,11 +37,18 @@
 <div class="tablewrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>التصنيف</th><th>المبلغ</th><th>الدفع</th><th>البيان</th></tr></thead><tbody id="transactions"></tbody></table></div>
 <p id="totals"></p>
 </div>
-<div class="card">
-<h2>إدارة الموظفين</h2>
-<p>إضافة الموظفين بأمان تحتاج إلى وظيفة خادمية تستخدم مفتاحاً سرياً. لا نضع المفتاح السري داخل هذه الصفحة. سنفعّل دعوات الموظفين بعد إعداد Edge Function.</p>
-<p class="msg">حالياً: المدير الرئيسي فقط يستطيع الدخول، ويمكنه إدارة المؤسسات والعمليات التي تسمح بها سياسات قاعدة البيانات.</p>
-</div>
+<section id="adminPanel" class="card" hidden>
+<div class="row"><div><h2>لوحة تحكم Admin</h2><p>إدارة حسابات الموظفين والمستخدمين.</p></div><span class="role-badge">ADMIN</span></div>
+<form id="inviteUserForm" class="grid">
+<label>اسم الموظف<input id="newUserName" type="text" maxlength="80" required placeholder="الاسم الكامل"></label>
+<label>البريد الإلكتروني<input id="newUserEmail" type="email" required autocomplete="off" placeholder="employee@example.com"></label>
+<button class="wide">إرسال دعوة وإنشاء حساب</button>
+</form>
+<p id="adminMsg" class="msg" aria-live="polite"></p>
+<div class="row"><h3>المستخدمون المسجلون</h3><button id="refreshUsers" type="button" class="secondary">تحديث القائمة</button></div>
+<div class="tablewrap"><table><thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الصلاحية</th></tr></thead><tbody id="adminUsers"></tbody></table></div>
+<p class="msg">المستخدم الجديد يتلقى رسالة دعوة على بريده لإكمال إعداد كلمة المرور. لا تتم مشاركة كلمات المرور مع المدير.</p>
+</section>
 </section>
 </main>
 <footer>البيانات محفوظة في Supabase وتظهر عند الدخول من الأجهزة الأخرى. يلزم اتصال بالإنترنت للمزامنة.</footer>
