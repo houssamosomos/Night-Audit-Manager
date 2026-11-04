@@ -10,7 +10,7 @@ const SUPABASE_URL =
   "https://bsrxfatlffybupsxoqxf.supabase.co";
 
 const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_Ldcy0B7_k8_zRpee5DUoA_3mbl4oUu";
+  "sb_publishable_Ldcy0B7K_z8_ZrPee5DUoA_3mbl4oUu";
 
 const supabase = createClient(
   SUPABASE_URL,
