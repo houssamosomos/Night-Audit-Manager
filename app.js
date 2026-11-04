@@ -31,6 +31,7 @@ const supabase = createClient(
 const $ = (id) => document.getElementById(id);
 
 let currentUser = null;
+let currentRole = "user";
 let currentProperty = null;
 let properties = [];
 let loadingTransactions = false;
@@ -103,16 +104,114 @@ async function initializeApp() {
 
 async function enterApp(user) {
   if (!user) return;
-
   if (currentUser?.id === user.id && currentProperty) return;
 
   currentUser = user;
 
-  show("auth", false);
-  show("workspace", true);
-  show("logout", true);
+  try {
+    await loadCurrentProfile();
+    show("auth", false);
+    show("workspace", true);
+    show("logout", true);
+    await loadProperties();
+  } catch (error) {
+    console.error(error);
+    show("auth", true);
+    show("workspace", false);
+    show("logout", false);
+    message("authMsg", "تعذر تحميل صلاحيات الحساب: " + errorMessage(error), true);
+  }
+}
 
-  await loadProperties();
+async function loadCurrentProfile() {
+  const { data, error } = await supabase
+    .from("app_profiles")
+    .select("role, full_name")
+    .eq("user_id", currentUser.id)
+    .single();
+
+  if (error) throw error;
+
+  currentRole = data?.role || "user";
+  show("adminPanel", currentRole === "admin");
+
+  if (currentRole === "admin") {
+    await loadAdminUsers();
+  }
+}
+
+async function loadAdminUsers() {
+  if (currentRole !== "admin") return;
+
+  const { data, error } = await supabase.functions.invoke("admin-users", {
+    body: { action: "list" }
+  });
+
+  if (error) {
+    message("adminMsg", "تعذر تحميل المستخدمين. تأكد من نشر Edge Function.", true);
+    console.error(error);
+    return;
+  }
+
+  const tbody = $("adminUsers");
+  if (!tbody) return;
+  tbody.replaceChildren();
+
+  (data?.users || []).forEach((user) => {
+    const row = document.createElement("tr");
+    [user.full_name || "—", user.email || "—", user.role || "user"].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = String(value);
+      row.appendChild(cell);
+    });
+    tbody.appendChild(row);
+  });
+
+  if (!(data?.users || []).length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.textContent = "لا يوجد مستخدمون بعد.";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  }
+}
+
+async function inviteUser(event) {
+  event.preventDefault();
+
+  if (currentRole !== "admin") {
+    message("adminMsg", "ليس لديك صلاحية إنشاء المستخدمين.", true);
+    return;
+  }
+
+  const fullName = value("newUserName");
+  const email = value("newUserEmail").toLowerCase();
+
+  if (!fullName || !email) {
+    message("adminMsg", "أدخل الاسم والبريد الإلكتروني.", true);
+    return;
+  }
+
+  message("adminMsg", "جارٍ إرسال الدعوة...");
+  const { data, error } = await supabase.functions.invoke("admin-users", {
+    body: {
+      action: "invite",
+      full_name: fullName,
+      email,
+      redirectTo: location.origin + location.pathname
+    }
+  });
+
+  if (error) {
+    message("adminMsg", error.message || "تعذر إنشاء الحساب.", true);
+    console.error(error);
+    return;
+  }
+
+  message("adminMsg", data?.message || "تم إرسال الدعوة بنجاح.");
+  $("inviteUserForm")?.reset();
+  await loadAdminUsers();
 }
 
 async function login(event) {
@@ -150,6 +249,7 @@ async function logout() {
   }
 
   currentUser = null;
+  currentRole = "user";
   currentProperty = null;
   properties = [];
 
@@ -455,6 +555,8 @@ $("renameProperty")?.addEventListener("click", renameProperty);
 $("transactionForm")?.addEventListener("submit", addTransaction);
 
 $("refresh")?.addEventListener("click", loadTransactions);
+$("inviteUserForm")?.addEventListener("submit", inviteUser);
+$("refreshUsers")?.addEventListener("click", loadAdminUsers);
 
 $("propertySelect")?.addEventListener("change", async (event) => {
   currentProperty = event.target.value || null;
@@ -474,6 +576,7 @@ supabase.auth.onAuthStateChange((event, session) => {
 
   if (event === "SIGNED_OUT") {
     currentUser = null;
+    currentRole = "user";
     currentProperty = null;
     properties = [];
 
