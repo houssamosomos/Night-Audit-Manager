@@ -31,7 +31,6 @@ const supabase = createClient(
 const $ = (id) => document.getElementById(id);
 
 let currentUser = null;
-let currentRole = "user";
 let currentProperty = null;
 let properties = [];
 let loadingTransactions = false;
@@ -62,32 +61,7 @@ function value(id) {
 }
 
 function errorMessage(error) {
-  return error?.message || String(error || "Une erreur inconnue est survenue.");
-}
-
-// Supabase Edge Function errors often contain the real server response
-// inside error.context. Read a clone so the original response remains usable.
-async function detailedFunctionError(error) {
-  const status = error?.context?.status;
-  let detail = errorMessage(error);
-
-  try {
-    if (error?.context && typeof error.context.clone === "function") {
-      const responseText = await error.context.clone().text();
-      if (responseText) {
-        try {
-          const body = JSON.parse(responseText);
-          detail = body.error || body.message || responseText;
-        } catch {
-          detail = responseText;
-        }
-      }
-    }
-  } catch (readError) {
-    console.warn("Could not read Edge Function error response:", readError);
-  }
-
-  return status ? `HTTP ${status}: ${detail}` : detail;
+  return error?.message || "Une erreur inconnue est survenue.";
 }
 
 function clearTransactions() {
@@ -129,116 +103,16 @@ async function initializeApp() {
 
 async function enterApp(user) {
   if (!user) return;
+
   if (currentUser?.id === user.id && currentProperty) return;
 
   currentUser = user;
 
-  try {
-    await loadCurrentProfile();
-    show("auth", false);
-    show("workspace", true);
-    show("logout", true);
-    await loadProperties();
-  } catch (error) {
-    console.error(error);
-    show("auth", true);
-    show("workspace", false);
-    show("logout", false);
-    message("authMsg", "تعذر تحميل صلاحيات الحساب: " + errorMessage(error), true);
-  }
-}
+  show("auth", false);
+  show("workspace", true);
+  show("logout", true);
 
-async function loadCurrentProfile() {
-  const { data, error } = await supabase
-    .from("app_profiles")
-    .select("role, full_name")
-    .eq("user_id", currentUser.id)
-    .single();
-
-  if (error) throw error;
-
-  currentRole = data?.role || "user";
-  show("adminPanel", currentRole === "admin");
-
-  if (currentRole === "admin") {
-    await loadAdminUsers();
-  }
-}
-
-async function loadAdminUsers() {
-  if (currentRole !== "admin") return;
-
-  const { data, error } = await supabase.functions.invoke("admin-users", {
-    body: { action: "list" }
-  });
-
-  if (error) {
-    const detail = await detailedFunctionError(error);
-    message("adminMsg", "تعذر تحميل المستخدمين: " + detail, true);
-    console.error("admin-users list failed:", error);
-    return;
-  }
-
-  const tbody = $("adminUsers");
-  if (!tbody) return;
-  tbody.replaceChildren();
-
-  (data?.users || []).forEach((user) => {
-    const row = document.createElement("tr");
-    [user.full_name || "—", user.email || "—", user.role || "user"].forEach((value) => {
-      const cell = document.createElement("td");
-      cell.textContent = String(value);
-      row.appendChild(cell);
-    });
-    tbody.appendChild(row);
-  });
-
-  if (!(data?.users || []).length) {
-    const row = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.colSpan = 3;
-    cell.textContent = "لا يوجد مستخدمون بعد.";
-    row.appendChild(cell);
-    tbody.appendChild(row);
-  }
-}
-
-async function inviteUser(event) {
-  event.preventDefault();
-
-  if (currentRole !== "admin") {
-    message("adminMsg", "ليس لديك صلاحية إنشاء المستخدمين.", true);
-    return;
-  }
-
-  const fullName = value("newUserName");
-  const email = value("newUserEmail").toLowerCase();
-
-  if (!fullName || !email) {
-    message("adminMsg", "أدخل الاسم والبريد الإلكتروني.", true);
-    return;
-  }
-
-  message("adminMsg", "جارٍ إرسال الدعوة...");
-  const { data, error } = await supabase.functions.invoke("admin-users", {
-    body: {
-      action: "invite",
-      full_name: fullName,
-      email,
-      redirectTo: location.origin + location.pathname
-    }
-  });
-
-  if (error) {
-    const detail = await detailedFunctionError(error);
-    message("adminMsg", "فشل إرسال الدعوة: " + detail, true);
-    console.error("admin-users invite failed:", error);
-    return;
-  }
-
-  message("adminMsg", data?.message || "تم إرسال الدعوة بنجاح.");
-  $("inviteUserForm")?.reset();
-  await loadAdminUsers();
+  await loadProperties();
 }
 
 async function login(event) {
@@ -276,7 +150,6 @@ async function logout() {
   }
 
   currentUser = null;
-  currentRole = "user";
   currentProperty = null;
   properties = [];
 
@@ -582,8 +455,6 @@ $("renameProperty")?.addEventListener("click", renameProperty);
 $("transactionForm")?.addEventListener("submit", addTransaction);
 
 $("refresh")?.addEventListener("click", loadTransactions);
-$("inviteUserForm")?.addEventListener("submit", inviteUser);
-$("refreshUsers")?.addEventListener("click", loadAdminUsers);
 
 $("propertySelect")?.addEventListener("change", async (event) => {
   currentProperty = event.target.value || null;
@@ -603,7 +474,6 @@ supabase.auth.onAuthStateChange((event, session) => {
 
   if (event === "SIGNED_OUT") {
     currentUser = null;
-    currentRole = "user";
     currentProperty = null;
     properties = [];
 

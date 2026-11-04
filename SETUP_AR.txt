@@ -20,28 +20,3 @@
 
 النشر:
 ارفع index.html وstyle.css وapp.js إلى جذر مستودع GitHub نفسه، مع استبدال الملفات القديمة. اترك إعداد Pages على main / root.
-
-
-6) تفعيل نظام Admin وUsers الجديد:
-   أ) افتح Supabase > SQL Editor وشغّل الملف:
-      supabase/migrations/202611040001_admin_users.sql
-   ب) هذا الملف ينشئ app_profiles ويضيف المستخدمين الحاليين كـ user.
-      ثم يرقّي حساب المدير الأول المحدد في الملف إلى admin.
-      تأكد أن UUID المحدد هو UID حسابك في Authentication > Users قبل تشغيل SQL.
-      إذا لم يكن حسابك، استبدل UUID في سطر UPDATE بالـ UID الصحيح.
-   ج) انشر Edge Function باسم admin-users:
-      supabase functions deploy admin-users
-      من مجلد المشروع باستخدام Supabase CLI.
-   د) أضف Secret باسم SUPABASE_SECRET_KEY إلى Edge Function secrets،
-      وضع فيه sb_secret الخاص بالمشروع (أو استخدم إعدادات Supabase CLI secrets).
-      لا تضع هذا المفتاح في GitHub أو app.js أو المتصفح.
-   هـ) في Authentication > URL Configuration تأكد من السماح بعنوان:
-      https://houssamosomos.github.io/Night-Audit-Manager/
-   و) أعد تحميل الموقع. ستظهر لوحة Admin فقط للحساب الذي يحمل role=admin.
-   ز) أدخل اسم الموظف وبريده لإرسال دعوة. الموظف يكمل التسجيل ويحدد كلمة مروره من رسالة البريد.
-
-ملاحظات:
-- لا يمكن إنشاء حسابات المستخدمين من لوحة Admin قبل تشغيل SQL ونشر Edge Function وإعداد Secret.
-- البريد الإلكتروني للدعوات يحتاج إعداد SMTP موثوق في Supabase للإرسال الفعلي، خاصة خارج حدود الرسائل التجريبية.
-- هذه النسخة تدير دعوات المستخدمين وتعرض قائمة الحسابات. توزيع المستخدمين على فنادق معينة وتحديد صلاحيات أدق لكل فندق يحتاج خطوة إضافية على hotel_members وسياسات RLS الحالية.
-- دور admin في app_profiles لا يمنح تلقائياً صلاحيات تجاوز RLS على جداول الفنادق والمعاملات؛ يجب أن تظل سياسات RLS هي المرجع الأمني.
