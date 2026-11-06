@@ -1,0 +1,13 @@
+{
+  "name": "night-audit-manager-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hotel night audit manager",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
